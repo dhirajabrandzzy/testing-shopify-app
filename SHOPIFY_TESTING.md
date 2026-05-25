@@ -1,0 +1,114 @@
+# LaraPush + Shopify — testing guide
+
+## Architecture
+
+| Piece | Role |
+|-------|------|
+| **LaraPush panel** | Stores subscribers, sends notifications, popup text/colors |
+| **Shopify app (this repo)** | OAuth, panel connection, app proxy (`/apps/larapush/*`) |
+| **Theme app embed** | Loads LaraPush popup on the storefront |
+
+Subscribers are **never** stored in the Shopify app database — only connection settings are.
+
+## Prerequisites
+
+1. LaraPush panel running (local or hosted) with a **Domain** created and enabled.
+2. Domain name in the panel should match the hostname shoppers use (usually your store’s **primary domain**, e.g. `your-store.com`).
+3. Shopify Partner app linked to this project (`shopify app config link` or `shopify.app.local.toml`).
+4. For app proxy on the storefront you need a **public URL** (tunnel). `npm run dev:localhost` works for Admin only; use `npm run dev` (Cloudflare tunnel) for full storefront testing.
+
+## Setup
+
+### 1. Panel
+
+```bash
+cd Larapush-Panel
+php artisan migrate
+```
+
+Open panel → **Domains** → your domain → **Integration → Shopify** (URL: `/integration/shopify/{domain_id}`).
+
+Click **Generate connection token** and copy the token (30 min validity).
+
+### 2. Shopify app
+
+```bash
+cd selfhostedapp1
+npm install
+npx prisma migrate deploy
+cp .env.example .env   # fill SHOPIFY_* and optional LARAPUSH_PANEL_URL
+npm run dev            # prefer tunnel mode for proxy + theme embed
+```
+
+Install the app on your dev store when prompted.
+
+### 3. Connect in Shopify Admin
+
+1. Apps → your app → **LaraPush settings**
+2. **Panel URL** — e.g. `https://panel.test` (no trailing slash)
+3. Paste **connection token** → **Connect to LaraPush**
+4. Note the **storefront domain** shown (must match panel Domain name)
+
+### 4. Enable theme embed
+
+1. Online Store → Themes → **Customize**
+2. **App embeds** (left sidebar)
+3. Enable **LaraPush Subscribe**
+4. Save
+
+### 5. Deploy app config (proxy + extension)
+
+```bash
+shopify app deploy
+```
+
+Re-install the app if you changed app proxy subpath (Shopify caches proxy path per install).
+
+## How the subscribe prompt appears
+
+1. Visitor opens any page with the embed enabled (typically all pages).
+2. LaraPush CDN script (`larapush-popup-5.0.0.min.js`) loads.
+3. The embed fetches `/apps/larapush/config.json` (app proxy → your app → panel API).
+4. **`new LaraPush(options, popup_data)`** runs — same as WordPress:
+   - Custom **heading / subheading / logo / colors** from panel domain popup settings (`_web_popup_data`).
+   - **Allow** / **Deny** buttons on the LaraPush overlay.
+5. On **Allow**, the browser shows the **native** “Allow notifications?” permission (Chrome/Firefox/Safari).
+6. After permission, the service worker at `/apps/larapush/firebase-messaging-sw.js` registers and the subscription is POSTed to `/apps/larapush/token` → forwarded to panel `POST /api/token`.
+7. Subscriber appears in panel under that **domain**.
+
+## Verify subscriber
+
+1. Open storefront in Chrome (desktop): `https://{your-storefront-domain}`
+2. Accept the LaraPush popup, then allow browser notifications
+3. Panel → domain → subscribers — new token should appear
+
+## Send a test push
+
+From LaraPush panel, create/send a notification targeting that **domain** (same as WordPress). Delivery uses existing panel send pipeline (VAPID/FCM).
+
+## Troubleshooting
+
+| Issue | Check |
+|-------|--------|
+| No popup on storefront | App embed enabled? App connected? `config.json` in Network tab |
+| `config.json` 503 | Connect app in Admin settings |
+| `config.json` 404 | App proxy deployed? Use `npm run dev` with tunnel, not localhost-only |
+| Subscriber not in panel | `storefront_domain` in app matches panel Domain `name`; check `/apps/larapush/token` response |
+| SW 404 | Visit `/apps/larapush/firebase-messaging-sw.js` on store domain |
+| Domain not found on token | Panel Domain name must equal storefront host (with/without `www` — be consistent) |
+
+## API reference (panel)
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `POST /api/shopify/v1/connect/exchange` | connection token | Shopify app connect |
+| `GET /api/shopify/v1/connect/status` | Bearer + `X-Shop` | Health check |
+| `GET /api/shopify/v1/storefront-config` | Bearer + `X-Shop` | Popup + options JSON |
+| `GET /api/shopify/v1/service-worker` | Bearer + `X-Shop` | SW source |
+| `POST /api/token` | public | Subscriber ingest (used by proxy relay) |
+
+## Local URLs
+
+- App proxy on store: `https://{shop}/apps/larapush/config.json`
+- SW: `https://{shop}/apps/larapush/firebase-messaging-sw.js`
+- Token: `POST https://{shop}/apps/larapush/token`

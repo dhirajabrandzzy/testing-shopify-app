@@ -16,7 +16,12 @@ include_config_on_deploy = false
 api_version = "2026-07"
 
 [access_scopes]
-scopes = "write_products,write_metaobjects,write_metaobject_definitions"
+scopes = "write_app_proxy"
+
+[app_proxy]
+url = "/larapush"
+prefix = "apps"
+subpath = "larapush"
 
 [auth]
 redirect_urls = [

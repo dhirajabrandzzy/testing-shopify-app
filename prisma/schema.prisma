@@ -32,3 +32,16 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model ShopSettings {
+  shop                String    @id
+  larapushPanelUrl    String?
+  larapushApiKey      String?
+  larapushDomainId    Int?
+  larapushDomainName  String?
+  storefrontDomain    String?
+  connectedAt         DateTime?
+  enabled             Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}

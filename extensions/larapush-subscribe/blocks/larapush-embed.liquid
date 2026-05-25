@@ -1,0 +1,54 @@
+{% comment %}
+  LaraPush web push — loads popup UI and registers service worker via app proxy.
+  Subscribers are stored in LaraPush panel; notifications are sent from the panel.
+{% endcomment %}
+<script src="https://cdn.larapush.com/scripts/larapush-popup-5.0.0.min.js" defer></script>
+<script>
+(function () {
+  if (window.__larapushShopifyLoaded) return;
+  window.__larapushShopifyLoaded = true;
+
+  var configUrl = '/apps/larapush/config.json';
+
+  function boot() {
+    fetch(configUrl, { credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('LaraPush config HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || !data.success) {
+          console.warn('[LaraPush] Not connected or config unavailable.', data);
+          return;
+        }
+        if (typeof LaraPush !== 'function') {
+          console.warn('[LaraPush] Popup script not loaded.');
+          return;
+        }
+        new LaraPush(data.options, data.popup_data);
+      })
+      .catch(function (err) {
+        console.warn('[LaraPush] Subscribe embed failed:', err);
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+
+{% schema %}
+{
+  "name": "LaraPush Subscribe",
+  "target": "body",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Enable this embed after connecting the LaraPush app in Shopify Admin. The subscribe prompt uses your LaraPush panel popup settings."
+    }
+  ]
+}
+{% endschema %}

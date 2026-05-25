@@ -1,0 +1,7 @@
+api_version = "2025-04"
+
+[[extensions]]
+name = "LaraPush Subscribe"
+handle = "larapush-subscribe"
+type = "theme"
+uid = "larapush-subscribe-theme-001"
