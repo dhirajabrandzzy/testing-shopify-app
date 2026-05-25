@@ -1,0 +1,50 @@
+# Localhost-only dev config (no webhooks — Shopify cannot reach localhost for webhooks).
+# Use: npm run dev:localhost
+# For webhooks + tunnels use: npm run dev (or ngrok + --tunnel-url)
+
+client_id = "0afb53c6f497bbf31cf6bf018ac4c5cf"
+name = "selfhosted"
+application_url = "https://example.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+include_config_on_deploy = false
+
+# Required by CLI schema; no subscriptions — Shopify cannot deliver webhooks to localhost.
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+scopes = "write_products,write_metaobjects,write_metaobject_definitions"
+
+[auth]
+redirect_urls = [
+  "https://example.com/auth/callback",
+  "https://example.com/auth/shopify/callback",
+  "https://example.com/api/auth/callback",
+]
+
+[product.metafields.app.demo_info]
+type = "single_line_text_field"
+name = "Demo Source Info"
+description = "Tracks products created by the Shopify app template for development"
+
+  [product.metafields.app.demo_info.access]
+  admin = "merchant_read_write"
+
+[metaobjects.app.example]
+name = "Example"
+description = "An example metaobject definition created by this template"
+
+  [metaobjects.app.example.access]
+  admin = "merchant_read_write"
+
+[metaobjects.app.example.fields.title]
+name = "Title"
+type = "single_line_text_field"
+required = true
+
+[metaobjects.app.example.fields.description]
+name = "Description"
+type = "multi_line_text_field"
