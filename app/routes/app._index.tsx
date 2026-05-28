@@ -1,5 +1,5 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import { getShopSettings, isShopConnected } from "../models/shop-settings.server";
@@ -21,49 +21,34 @@ export default function Index() {
     useLoaderData<typeof loader>();
 
   return (
-    <s-page heading="LaraPush for Shopify">
-      <s-section heading="Overview">
-        <s-paragraph>
-          Self-hosted bridge between your Shopify store and LaraPush panel.
-          Subscribers and push campaigns stay in LaraPush — this app handles
-          OAuth, connection, and storefront subscription only.
-        </s-paragraph>
-        <s-stack direction="block" gap="base">
-          <s-text>
-            <strong>Shop:</strong> {shop}
-          </s-text>
-          <s-text>
-            <strong>Connection:</strong>{" "}
-            {connected
-              ? `Connected (${domainName} → ${storefrontDomain})`
-              : "Not connected"}
-          </s-text>
-        </s-stack>
-        <s-link href="/app/settings">
-          <s-button variant="primary">
-            {connected ? "Manage settings" : "Connect LaraPush panel"}
-          </s-button>
-        </s-link>
-      </s-section>
-
-      {connected ? (
-        <s-section heading="Next steps">
-          <s-unordered-list>
-            <s-list-item>
-              Enable the <strong>LaraPush Subscribe</strong> app embed in your
-              theme
-            </s-list-item>
-            <s-list-item>
-              Visit your storefront and subscribe as a test visitor
-            </s-list-item>
-            <s-list-item>
-              Send a test notification from LaraPush panel for domain{" "}
-              {domainName}
-            </s-list-item>
-          </s-unordered-list>
-        </s-section>
-      ) : null}
-    </s-page>
+    <main style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
+      <h1 style={{ marginBottom: 12 }}>LaraPush for Shopify</h1>
+      <p style={{ marginBottom: 16 }}>
+        Self-hosted bridge between your Shopify store and LaraPush panel.
+        Subscribers and push campaigns stay in LaraPush.
+      </p>
+      <p>
+        <strong>Shop:</strong> {shop}
+      </p>
+      <p style={{ marginBottom: 16 }}>
+        <strong>Connection:</strong>{" "}
+        {connected
+          ? `Connected (${domainName} → ${storefrontDomain})`
+          : "Not connected"}
+      </p>
+      <Link
+        to="/app/settings"
+        style={{
+          display: "inline-block",
+          padding: "10px 14px",
+          border: "1px solid #0f62fe",
+          borderRadius: 8,
+          textDecoration: "none",
+        }}
+      >
+        {connected ? "Manage settings" : "Connect LaraPush panel"}
+      </Link>
+    </main>
   );
 }
 

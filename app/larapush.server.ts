@@ -75,7 +75,16 @@ export async function fetchStorefrontConfig(
     throw new Error(`Storefront config failed (${response.status})`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Shopify app proxy service workers live under /apps/larapush/*.
+  // Force LaraPush to register with an allowed scope.
+  if (data?.options) {
+    data.options.domain = "/apps/larapush/";
+    data.options.serviceWorker = "/apps/larapush/firebase-messaging-sw.js";
+    data.options.api_url = "/apps/larapush/token";
+  }
+
+  return data;
 }
 
 export async function fetchServiceWorker(
@@ -92,6 +101,32 @@ export async function fetchServiceWorker(
   }
 
   return response.text();
+}
+
+export function buildServiceWorkerFromConfig(config: any) {
+  const options = config?.options ?? {};
+  const firebaseConfig = options?.firebaseConfig ?? {};
+  const domain = options?.domain ?? "";
+  const apiUrl = options?.api_url ?? "/apps/larapush/token";
+  const vapidPublicKey = options?.vapid_public_key ?? "";
+  const oneTimeCollect = options?.one_time_collect ?? 1;
+
+  return `const options = {
+  firebaseConfig: {
+    projectId: ${JSON.stringify(firebaseConfig?.projectId ?? "")},
+    messagingSenderId: ${JSON.stringify(firebaseConfig?.messagingSenderId ?? "")},
+    appId: ${JSON.stringify(firebaseConfig?.appId ?? "")},
+    apiKey: ${JSON.stringify(firebaseConfig?.apiKey ?? "")},
+  },
+  domain: ${JSON.stringify(domain)},
+  api_url: ${JSON.stringify(apiUrl)},
+  vapid_public_key: ${JSON.stringify(vapidPublicKey)},
+  http: 0,
+  one_time_collect: ${Number(oneTimeCollect) === 1 ? 1 : 0},
+};
+
+importScripts("https://cdn.larapush.com/sw/larapush-sw-v5.min.js");
+`;
 }
 
 export async function forwardTokenToPanel(

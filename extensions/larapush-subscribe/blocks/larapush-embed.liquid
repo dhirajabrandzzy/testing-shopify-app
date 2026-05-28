@@ -1,17 +1,116 @@
 {% comment %}
-  LaraPush web push — loads popup UI and registers service worker via app proxy.
-  Subscribers are stored in LaraPush panel; notifications are sent from the panel.
+  Shopify-compatible LaraPush web push.
+  We cannot register a root-scope service worker from /apps/larapush/*.
+  So we register under /apps/larapush/ and collect token directly.
 {% endcomment %}
-<script src="https://cdn.larapush.com/scripts/larapush-popup-5.0.0.min.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js" defer></script>
 <script>
 (function () {
   if (window.__larapushShopifyLoaded) return;
   window.__larapushShopifyLoaded = true;
 
+  // Do not run inside Shopify web-pixel sandbox iframes.
+  // SW registration/subscription is unreliable there.
+  if (window.top !== window.self) return;
+  if (window.location.pathname.indexOf('/web-pixels@') === 0) return;
+
   var configUrl = '/apps/larapush/config.json';
+  var swScope = '/apps/larapush/';
+  var swPath = '/apps/larapush/firebase-messaging-sw.js';
+
+  function showPrompt(popupData, onAllow, onDeny) {
+    if (document.getElementById('larapush-shopify-prompt')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'larapush-shopify-prompt';
+    wrap.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:420px;';
+    var heading = (popupData && popupData.heading) || 'Enable notifications';
+    var sub = (popupData && popupData.subheading) || 'Get updates in your browser.';
+    var allowText = (popupData && popupData.allowText) || 'Allow';
+    var denyText = (popupData && popupData.denyText) || 'Deny';
+    wrap.innerHTML =
+      '<div style="font-weight:600;margin-bottom:6px;">' + heading + '</div>' +
+      '<div style="font-size:13px;color:#444;margin-bottom:10px;">' + sub + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button id="lp-allow-btn" style="padding:8px 12px;border:0;border-radius:8px;background:#111;color:#fff;cursor:pointer;">' + allowText + '</button>' +
+      '<button id="lp-deny-btn" style="padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;">' + denyText + '</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.querySelector('#lp-allow-btn').addEventListener('click', function () {
+      wrap.remove();
+      onAllow();
+    });
+    wrap.querySelector('#lp-deny-btn').addEventListener('click', function () {
+      wrap.remove();
+      if (onDeny) onDeny();
+    });
+  }
+
+  function postToken(apiUrl, token) {
+    return fetch(apiUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1'
+      },
+      body: JSON.stringify({
+        token: token,
+        url: window.location.href
+      })
+    });
+  }
+
+  function subscribeWithFirebase(config) {
+    if (!window.firebase || !window.firebase.messaging) {
+      throw new Error('Firebase SDK not loaded');
+    }
+    var options = config.options || {};
+    if (!options.firebaseConfig || !options.vapid_public_key) {
+      throw new Error('LaraPush options missing firebaseConfig or vapid key');
+    }
+
+    if (!window.firebase.apps.length) {
+      window.firebase.initializeApp(options.firebaseConfig);
+    }
+    var messaging = window.firebase.messaging();
+
+    return navigator.serviceWorker.register(swPath, { scope: swScope })
+      .then(function (registration) {
+        // Ensure worker becomes active before token subscription.
+        if (registration.active) return registration;
+        return new Promise(function (resolve, reject) {
+          var start = Date.now();
+          var timer = setInterval(function () {
+            if (registration.active) {
+              clearInterval(timer);
+              resolve(registration);
+              return;
+            }
+            if (Date.now() - start > 10000) {
+              clearInterval(timer);
+              reject(new Error('Service worker did not activate in time.'));
+            }
+          }, 250);
+        });
+      })
+      .then(function (registration) {
+        return messaging.getToken({
+          vapidKey: options.vapid_public_key,
+          serviceWorkerRegistration: registration
+        });
+      })
+      .then(function (token) {
+        if (!token) throw new Error('No FCM token returned');
+        return postToken(options.api_url || '/apps/larapush/token', token);
+      });
+  }
 
   function boot() {
-    fetch(configUrl, { credentials: 'same-origin' })
+    fetch(configUrl, {
+      credentials: 'same-origin',
+      headers: { 'ngrok-skip-browser-warning': '1' }
+    })
       .then(function (res) {
         if (!res.ok) throw new Error('LaraPush config HTTP ' + res.status);
         return res.json();
@@ -21,11 +120,40 @@
           console.warn('[LaraPush] Not connected or config unavailable.', data);
           return;
         }
-        if (typeof LaraPush !== 'function') {
-          console.warn('[LaraPush] Popup script not loaded.');
+        if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+          console.warn('[LaraPush] Browser does not support notifications/service workers.');
           return;
         }
-        new LaraPush(data.options, data.popup_data);
+
+        if (Notification.permission === 'granted') {
+          subscribeWithFirebase(data).catch(function (err) {
+            console.warn('[LaraPush] Existing permission flow failed:', err);
+          });
+          return;
+        }
+
+        if (Notification.permission === 'denied') {
+          console.warn('[LaraPush] Notification permission denied by user.');
+          return;
+        }
+
+        showPrompt(
+          data.popup_data,
+          function () {
+            Notification.requestPermission().then(function (permission) {
+              if (permission !== 'granted') {
+                console.warn('[LaraPush] Permission not granted:', permission);
+                return;
+              }
+              subscribeWithFirebase(data).catch(function (err) {
+                console.warn('[LaraPush] Subscribe failed:', err);
+              });
+            });
+          },
+          function () {
+            console.warn('[LaraPush] User dismissed prompt.');
+          }
+        );
       })
       .catch(function (err) {
         console.warn('[LaraPush] Subscribe embed failed:', err);

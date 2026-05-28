@@ -26,7 +26,7 @@ cd Larapush-Panel
 php artisan migrate
 ```
 
-Open panel → **Domains** → your domain → **Integration → Shopify** (URL: `/integration/shopify/{domain_id}`).
+Open panel → **Domains** → your domain → **Shopify** button (or URL `/integration/shopify/{domain_id}`).
 
 Click **Generate connection token** and copy the token (30 min validity).
 

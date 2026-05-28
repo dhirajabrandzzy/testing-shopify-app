@@ -128,114 +128,72 @@ export default function SettingsPage() {
   }, [actionData, shopify]);
 
   return (
-    <s-page heading="LaraPush settings">
-      <s-section heading="Connection">
-        <s-paragraph>
-          Subscribers are stored in your LaraPush panel. Notifications are sent
-          from the panel. This app only connects Shopify to LaraPush and serves
-          the subscription script on your storefront.
-        </s-paragraph>
+    <main style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
+      <h1 style={{ marginBottom: 8 }}>LaraPush settings</h1>
+      <p style={{ marginBottom: 16 }}>
+        Connect this Shopify app to your LaraPush panel using panel URL + token.
+      </p>
 
-        <s-stack direction="block" gap="base">
-          <s-text>
-            <strong>Shop:</strong> {shop}
-          </s-text>
-          <s-text>
-            <strong>Storefront domain (for panel):</strong>{" "}
-            {settings?.storefrontDomain || primaryDomain || myshopifyDomain}
-          </s-text>
-          <s-text>
-            <strong>Status:</strong>{" "}
-            {connected ? "Connected" : "Not connected"}
-          </s-text>
-          {connected && panelStatus?.success ? (
-            <s-text>
-              Panel domain: {String(panelStatus.domain_name)} (ID{" "}
-              {String(panelStatus.domain_id)})
-            </s-text>
-          ) : null}
-        </s-stack>
-      </s-section>
+      <div style={{ marginBottom: 20 }}>
+        <p>
+          <strong>Shop:</strong> {shop}
+        </p>
+        <p>
+          <strong>Storefront domain (for panel):</strong>{" "}
+          {settings?.storefrontDomain || primaryDomain || myshopifyDomain}
+        </p>
+        <p>
+          <strong>Status:</strong> {connected ? "Connected" : "Not connected"}
+        </p>
+        {connected && panelStatus?.success ? (
+          <p>
+            <strong>Panel domain:</strong> {String(panelStatus.domain_name)} (ID{" "}
+            {String(panelStatus.domain_id)})
+          </p>
+        ) : null}
+      </div>
 
-      <s-section heading="Connect panel">
-        <Form method="post">
-          <input type="hidden" name="intent" value="connect" />
-          <s-stack direction="block" gap="base">
-            <label>
-              <s-text>LaraPush panel URL</s-text>
-              <input
-                name="panelUrl"
-                type="url"
-                required
-                placeholder="https://panel.yourdomain.com"
-                defaultValue={settings?.larapushPanelUrl || defaultPanelUrl}
-                style={{ width: "100%", marginTop: 4, padding: 8 }}
-              />
-            </label>
-            <label>
-              <s-text>Connection token</s-text>
-              <input
-                name="connectionToken"
-                type="text"
-                required
-                placeholder="Paste token from panel → Domain → Shopify"
-                style={{ width: "100%", marginTop: 4, padding: 8 }}
-              />
-            </label>
-            <s-button
-              type="submit"
-              variant="primary"
-              {...(isSubmitting ? { loading: true } : {})}
-            >
-              Connect to LaraPush
-            </s-button>
-          </s-stack>
-        </Form>
-        <s-paragraph>
-          In LaraPush panel, open{" "}
-          <strong>Integration → Shopify</strong> for your domain and generate a
-          connection token (valid 30 minutes).
-        </s-paragraph>
-      </s-section>
+      <Form method="post" style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+        <input type="hidden" name="intent" value="connect" />
+        <label>
+          LaraPush panel URL
+          <input
+            name="panelUrl"
+            type="url"
+            required
+            placeholder="https://panel.yourdomain.com"
+            defaultValue={settings?.larapushPanelUrl || defaultPanelUrl}
+            style={{ width: "100%", marginTop: 4, padding: 8 }}
+          />
+        </label>
+        <label>
+          Connection token
+          <input
+            name="connectionToken"
+            type="text"
+            required
+            placeholder="Paste token from panel"
+            style={{ width: "100%", marginTop: 4, padding: 8 }}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{ width: 240, padding: "10px 12px" }}
+        >
+          {isSubmitting ? "Connecting..." : "Connect to LaraPush"}
+        </button>
+      </Form>
 
       {connected ? (
-        <s-section heading="Theme embed (required for subscribe prompt)">
-          <s-ordered-list>
-            <s-list-item>
-              Shopify Admin → Online Store → Themes → Customize
-            </s-list-item>
-            <s-list-item>
-              App embeds → enable <strong>LaraPush Subscribe</strong>
-            </s-list-item>
-            <s-list-item>
-              Save, then open your storefront in Chrome and allow notifications
-            </s-list-item>
-          </s-ordered-list>
-          <Form method="post" style={{ marginTop: 16 }}>
-            <input type="hidden" name="intent" value="disconnect" />
-            <s-button
-              type="submit"
-              variant="tertiary"
-              tone="critical"
-              {...(isSubmitting ? { loading: true } : {})}
-            >
-              Disconnect
-            </s-button>
-          </Form>
-        </s-section>
+        <Form method="post">
+          <input type="hidden" name="intent" value="disconnect" />
+          <button type="submit" disabled={isSubmitting} style={{ padding: "8px 12px" }}>
+            Disconnect
+          </button>
+        </Form>
       ) : null}
-
-      <s-section slot="aside" heading="How the prompt appears">
-        <s-paragraph>
-          LaraPush uses the same popup script as WordPress (
-          <code>larapush-popup</code> from CDN). After you enable the theme
-          embed, visitors see your custom heading/subheading with Allow and Deny
-          buttons (configured in the panel under domain popup settings). When they
-          click Allow, the browser shows the native notification permission
-          dialog, then the subscription is saved in LaraPush.
-        </s-paragraph>
-      </s-section>
-    </s-page>
+    </main>
   );
 }
 

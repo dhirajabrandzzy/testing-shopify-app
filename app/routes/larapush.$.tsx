@@ -5,6 +5,7 @@ import {
   isShopConnected,
 } from "../models/shop-settings.server";
 import {
+  buildServiceWorkerFromConfig,
   fetchServiceWorker,
   fetchStorefrontConfig,
   forwardTokenToPanel,
@@ -30,7 +31,7 @@ async function getProxyContext(request: Request) {
   }
 
   const settings = await getShopSettings(shop);
-  if (!settings || !isShopConnected(settings)) {
+  if (!settings || !isShopConnected(settings) || settings.enabled === false) {
     throw new Response("LaraPush is not connected for this shop.", {
       status: 503,
     });
@@ -39,45 +40,120 @@ async function getProxyContext(request: Request) {
   return { shop, settings };
 }
 
+function fallbackServiceWorker() {
+  return `self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+`;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { shop, settings } = await getProxyContext(request);
   const path = proxyPath(request);
+  let shop = "";
+  let settings: Awaited<ReturnType<typeof getShopSettings>> | null = null;
+
+  try {
+    const context = await getProxyContext(request);
+    shop = context.shop;
+    settings = context.settings;
+  } catch (error) {
+    if (path === "config.json") {
+      return Response.json(
+        {
+          success: false,
+          message:
+            error instanceof Response
+              ? await error.text()
+              : "LaraPush is not ready for this shop.",
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (path === "firebase-messaging-sw.js") {
+      return new Response(fallbackServiceWorker(), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/javascript",
+          "Cache-Control": "no-store",
+          "Service-Worker-Allowed": "/",
+        },
+      });
+    }
+  }
 
   if (path === "firebase-messaging-sw.js") {
-    const sw = await fetchServiceWorker(settings, shop);
+    let sw: string;
+    try {
+      sw = await fetchServiceWorker(settings!, shop);
+    } catch {
+      try {
+        const config = await fetchStorefrontConfig(settings!, shop);
+        sw = buildServiceWorkerFromConfig(config);
+      } catch {
+        sw = fallbackServiceWorker();
+      }
+    }
     return new Response(sw, {
       status: 200,
       headers: {
         "Content-Type": "application/javascript",
         "Cache-Control": "public, max-age=300",
+        "Service-Worker-Allowed": "/",
       },
     });
   }
 
   if (path === "config.json") {
-    const config = await fetchStorefrontConfig(settings, shop);
-    return Response.json(config, {
-      headers: { "Cache-Control": "public, max-age=120" },
-    });
+    try {
+      const config = await fetchStorefrontConfig(settings!, shop);
+      return Response.json(config, {
+        headers: { "Cache-Control": "public, max-age=120" },
+      });
+    } catch (error) {
+      return Response.json(
+        {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not load LaraPush configuration.",
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
   }
 
-  return new Response("Not found", { status: 404 });
+  return new Response("", { status: 200 });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return Response.json({ success: false, message: "Method not allowed" });
   }
 
-  const { shop, settings } = await getProxyContext(request);
+  let shop = "";
+  let settings: Awaited<ReturnType<typeof getShopSettings>> | null = null;
+  try {
+    const context = await getProxyContext(request);
+    shop = context.shop;
+    settings = context.settings;
+  } catch (error) {
+    return Response.json({
+      success: false,
+      message:
+        error instanceof Response
+          ? await error.text()
+          : "LaraPush is not connected for this shop.",
+    });
+  }
   const path = proxyPath(request);
 
   if (path !== "token") {
-    return new Response("Not found", { status: 404 });
+    return Response.json({ success: false, message: "Not found" });
   }
 
-  const body = await request.json();
-  const result = await forwardTokenToPanel(settings, shop, body);
+  const body = await request.json().catch(() => ({}));
+  const result = await forwardTokenToPanel(settings!, shop, body);
 
-  return Response.json(result.data, { status: result.status });
+  return Response.json(result.data, { status: result.status || 200 });
 };

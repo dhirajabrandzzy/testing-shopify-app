@@ -1,5 +1,5 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
@@ -17,10 +17,19 @@ export default function App() {
 
   return (
     <AppProvider embedded apiKey={apiKey}>
-      <s-app-nav>
-        <s-link href="/app">Home</s-link>
-        <s-link href="/app/settings">LaraPush settings</s-link>
-      </s-app-nav>
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid #e1e3e5",
+          display: "flex",
+          gap: 12,
+          alignItems: "center",
+          background: "#fff",
+        }}
+      >
+        <Link to="/app">Home</Link>
+        <Link to="/app/settings">LaraPush settings</Link>
+      </div>
       <Outlet />
     </AppProvider>
   );
