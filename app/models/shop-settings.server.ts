@@ -1,10 +1,11 @@
 import prisma from "../db.server";
-import { fetchConnectStatus } from "../larapush.server";
+import { fetchPanelAuthStatus } from "../larapush.server";
 
 export type ShopSettingsRecord = {
   shop: string;
   larapushPanelUrl: string | null;
-  larapushApiKey: string | null;
+  larapushEmail: string | null;
+  larapushPassword: string | null;
   larapushDomainId: number | null;
   larapushDomainName: string | null;
   storefrontDomain: string | null;
@@ -21,7 +22,8 @@ export async function upsertShopSettings(
   data: Partial<
     Omit<ShopSettingsRecord, "shop"> & {
       larapushPanelUrl?: string | null;
-      larapushApiKey?: string | null;
+      larapushEmail?: string | null;
+      larapushPassword?: string | null;
     }
   >,
 ) {
@@ -41,8 +43,10 @@ export async function deleteShopSettings(shop: string) {
 
 export function isShopConnected(settings: ShopSettingsRecord | null | undefined) {
   return Boolean(
-    settings?.larapushApiKey &&
-      settings?.larapushPanelUrl &&
+    settings?.larapushPanelUrl &&
+      settings?.larapushEmail &&
+      settings?.larapushPassword &&
+      settings?.larapushDomainName &&
       settings?.storefrontDomain &&
       settings?.enabled,
   );
@@ -52,7 +56,7 @@ export type PanelConnectionState = {
   connected: boolean;
   settings: ShopSettingsRecord | null;
   panelStatus: Record<string, unknown> | null;
-  disabledByPanel: boolean;
+  credentialsInvalid: boolean;
 };
 
 export async function resolvePanelConnection(
@@ -65,33 +69,34 @@ export async function resolvePanelConnection(
       connected: false,
       settings,
       panelStatus: null,
-      disabledByPanel: Boolean(
-        settings?.larapushApiKey &&
-          settings?.larapushPanelUrl &&
-          settings?.storefrontDomain &&
+      credentialsInvalid: Boolean(
+        settings?.larapushPanelUrl &&
+          settings?.larapushEmail &&
+          settings?.larapushPassword &&
+          settings?.larapushDomainName &&
           settings?.enabled === false,
       ),
     };
   }
 
-  const result = await fetchConnectStatus(settings!, shop);
+  const result = await fetchPanelAuthStatus(settings!);
 
-  if (result.ok && result.data?.success) {
+  if (result.ok && result.data?.success !== false) {
     return {
       connected: true,
       settings,
       panelStatus: result.data,
-      disabledByPanel: false,
+      credentialsInvalid: false,
     };
   }
 
-  if (result.status === 401 || result.status === 403) {
+  if (result.status === 401) {
     const updated = await upsertShopSettings(shop, { enabled: false });
     return {
       connected: false,
       settings: updated,
       panelStatus: result.data,
-      disabledByPanel: true,
+      credentialsInvalid: true,
     };
   }
 
@@ -99,7 +104,7 @@ export async function resolvePanelConnection(
     connected: true,
     settings,
     panelStatus: result.data,
-    disabledByPanel: false,
+    credentialsInvalid: false,
   };
 }
 

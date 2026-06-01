@@ -13,10 +13,7 @@ import {
   resolvePanelConnection,
   upsertShopSettings,
 } from "../models/shop-settings.server";
-import {
-  exchangeConnectionToken,
-  fetchShopPrimaryDomain,
-} from "../larapush.server";
+import { connectToPanel, fetchShopPrimaryDomain } from "../larapush.server";
 import { LaraPushBrandBar } from "../components/LaraPushBrandBar";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -29,8 +26,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shop,
     settings: connection.settings,
     connected: connection.connected,
-    disabledByPanel: connection.disabledByPanel,
-    panelStatus: connection.panelStatus,
+    credentialsInvalid: connection.credentialsInvalid,
     primaryDomain: domains.primaryDomain,
     myshopifyDomain: domains.myshopifyDomain,
     defaultPanelUrl: process.env.LARAPUSH_PANEL_URL || "",
@@ -49,12 +45,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const panelUrl = String(form.get("panelUrl") || "").trim();
-  const connectionToken = String(form.get("connectionToken") || "").trim();
+  const email = String(form.get("email") || "").trim();
+  const password = String(form.get("password") || "");
+  const domainName = String(form.get("domainName") || "").trim();
 
-  if (!panelUrl || !connectionToken) {
+  if (!panelUrl || !email || !password || !domainName) {
     return {
       ok: false,
-      message: "Panel URL and connection token are required.",
+      message: "Panel URL, email, password, and domain name are required.",
     };
   }
 
@@ -63,28 +61,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     domains.primaryDomain || domains.myshopifyDomain || shop;
 
   try {
-    const appUrl = process.env.SHOPIFY_APP_URL || "";
-    const result = await exchangeConnectionToken({
+    const result = await connectToPanel({
       panelUrl,
-      connectionToken,
-      shop,
-      storefrontDomain,
-      appUrl,
+      email,
+      password,
+      domainName,
     });
 
     await upsertShopSettings(shop, {
       larapushPanelUrl: panelUrl.replace(/\/$/, ""),
-      larapushApiKey: result.api_key,
+      larapushEmail: email,
+      larapushPassword: password,
       larapushDomainId: result.domain_id,
       larapushDomainName: result.domain_name,
-      storefrontDomain: result.storefront_domain,
+      storefrontDomain,
       connectedAt: new Date(),
       enabled: true,
     });
 
     return {
       ok: true,
-      message: `Connected to LaraPush domain "${result.domain_name}" (${result.storefront_domain}). Enable the theme app embed, then visit your storefront to subscribe.`,
+      message: `Connected to LaraPush domain "${result.domain_name}". Enable the theme app embed, then visit your storefront to subscribe.`,
     };
   } catch (error) {
     return {
@@ -100,8 +97,7 @@ export default function SettingsPage() {
     shop,
     settings,
     connected,
-    disabledByPanel,
-    panelStatus,
+    credentialsInvalid,
     primaryDomain,
     myshopifyDomain,
     defaultPanelUrl,
@@ -129,8 +125,14 @@ export default function SettingsPage() {
             <strong>Shop:</strong> {shop}
           </p>
           <p>
-            <strong>Panel domain:</strong>{" "}
-            {settings?.larapushPanelUrl || "—"}
+            <strong>Panel URL:</strong> {settings?.larapushPanelUrl || "—"}
+          </p>
+          <p>
+            <strong>Panel email:</strong> {settings?.larapushEmail || "—"}
+          </p>
+          <p>
+            <strong>LaraPush domain:</strong>{" "}
+            {settings?.larapushDomainName || "—"}
           </p>
           <p>
             <strong>Storefront domain:</strong>{" "}
@@ -144,14 +146,6 @@ export default function SettingsPage() {
               <span className="lp-status-disconnected">Not connected</span>
             )}
           </p>
-          {connected && settings?.larapushDomainName ? (
-            <p>
-              <strong>LaraPush domain:</strong> {settings.larapushDomainName}
-              {panelStatus?.success && panelStatus.domain_id != null
-                ? ` (ID ${String(panelStatus.domain_id)})`
-                : ""}
-            </p>
-          ) : null}
         </div>
 
         {connected ? (
@@ -160,16 +154,16 @@ export default function SettingsPage() {
             <strong>{settings?.larapushPanelUrl}</strong>. Subscribers sync to
             LaraPush domain {settings?.larapushDomainName}.
           </s-banner>
-        ) : disabledByPanel ? (
-          <s-banner tone="warning" heading="Disabled from LaraPush panel">
-            The connection was disabled in your LaraPush panel. Generate a new
-            connection token and reconnect below.
+        ) : credentialsInvalid ? (
+          <s-banner tone="warning" heading="Invalid panel credentials">
+            The saved email or password no longer works. Enter your current
+            panel login in the form below and save again.
           </s-banner>
         ) : (
           <s-banner tone="info" heading="How to connect">
-            In your LaraPush panel, open Domains → Integration → Shopify for
-            this domain, generate a connection token, then paste the panel URL
-            and token below.
+            Use the same panel URL, email, and password as the WordPress plugin.
+            The domain name must match this site in LaraPush (see Domains →
+            Integration → Shopify in the panel).
           </s-banner>
         )}
       </s-section>
@@ -191,13 +185,39 @@ export default function SettingsPage() {
           </div>
 
           <div className="lp-field">
-            <label htmlFor="connectionToken">Connection token</label>
+            <label htmlFor="email">Panel email</label>
             <input
-              id="connectionToken"
-              name="connectionToken"
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="username"
+              placeholder="Same as WordPress plugin"
+              defaultValue={settings?.larapushEmail || ""}
+            />
+          </div>
+
+          <div className="lp-field">
+            <label htmlFor="password">Panel password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              placeholder="Same as WordPress plugin"
+            />
+          </div>
+
+          <div className="lp-field">
+            <label htmlFor="domainName">LaraPush domain name</label>
+            <input
+              id="domainName"
+              name="domainName"
               type="text"
               required
-              placeholder="Paste token from LaraPush panel"
+              placeholder="e.g. yourstore.com"
+              defaultValue={settings?.larapushDomainName || ""}
             />
           </div>
 

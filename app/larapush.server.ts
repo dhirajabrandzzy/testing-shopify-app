@@ -1,5 +1,12 @@
 import type { ShopSettingsRecord } from "./models/shop-settings.server";
 
+export type PanelCredentials = {
+  larapushPanelUrl: string;
+  larapushEmail: string;
+  larapushPassword: string;
+  larapushDomainName: string;
+};
+
 function panelBaseUrl(settings: ShopSettingsRecord) {
   const url = settings.larapushPanelUrl?.replace(/\/$/, "");
   if (!url) {
@@ -8,74 +15,110 @@ function panelBaseUrl(settings: ShopSettingsRecord) {
   return url;
 }
 
-function shopifyHeaders(settings: ShopSettingsRecord, shop: string) {
+function panelAuthBody(settings: ShopSettingsRecord) {
   return {
-    Authorization: `Bearer ${settings.larapushApiKey}`,
-    "X-Shop": shop,
-    Accept: "application/json",
-    "Content-Type": "application/json",
+    email: settings.larapushEmail ?? "",
+    password: settings.larapushPassword ?? "",
   };
 }
 
-export async function exchangeConnectionToken(params: {
-  panelUrl: string;
-  connectionToken: string;
-  shop: string;
-  storefrontDomain: string;
-  appUrl?: string;
-}) {
-  const base = params.panelUrl.replace(/\/$/, "");
-  const response = await fetch(`${base}/api/shopify/v1/connect/exchange`, {
+async function panelPost(
+  panelUrl: string,
+  path: string,
+  body: Record<string, unknown>,
+) {
+  const base = panelUrl.replace(/\/$/, "");
+  const response = await fetch(`${base}/api/${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      connection_token: params.connectionToken,
-      shop: params.shop,
-      storefront_domain: params.storefrontDomain,
-      app_url: params.appUrl,
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
   });
 
-  const data = await response.json();
-  if (!response.ok || !data.success) {
-    throw new Error(data.message || "Failed to connect to LaraPush panel.");
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+export async function verifyPanelCredentials(credentials: PanelCredentials) {
+  const { response, data } = await panelPost(
+    credentials.larapushPanelUrl,
+    "checkAuth",
+    {
+      email: credentials.larapushEmail,
+      password: credentials.larapushPassword,
+    },
+  );
+
+  if (!response.ok || data.success === false) {
+    throw new Error(
+      typeof data.message === "string"
+        ? data.message
+        : "Invalid panel email or password.",
+    );
   }
 
-  return data as {
-    success: boolean;
-    api_key: string;
-    domain_id: number;
-    domain_name: string;
-    storefront_domain: string;
-    shop_domain: string;
+  return data;
+}
+
+export async function connectToPanel(params: {
+  panelUrl: string;
+  email: string;
+  password: string;
+  domainName: string;
+}) {
+  const credentials: PanelCredentials = {
+    larapushPanelUrl: params.panelUrl.replace(/\/$/, ""),
+    larapushEmail: params.email.trim(),
+    larapushPassword: params.password,
+    larapushDomainName: params.domainName.trim(),
+  };
+
+  await verifyPanelCredentials(credentials);
+
+  const { response, data } = await panelPost(
+    credentials.larapushPanelUrl,
+    "shopifyIntegration",
+    {
+      email: credentials.larapushEmail,
+      password: credentials.larapushPassword,
+      domain: credentials.larapushDomainName,
+    },
+  );
+
+  if (!response.ok || !data.success) {
+    throw new Error(
+      typeof data.message === "string"
+        ? data.message
+        : "Could not load LaraPush domain configuration.",
+    );
+  }
+
+  return {
+    domain_id: data.domain_id as number,
+    domain_name: data.domain_name as string,
   };
 }
 
-export async function fetchConnectStatus(
-  settings: ShopSettingsRecord,
-  shop: string,
-) {
-  const response = await fetch(
-    `${panelBaseUrl(settings)}/api/shopify/v1/connect/status`,
-    { headers: shopifyHeaders(settings, shop) },
+export async function fetchPanelAuthStatus(settings: ShopSettingsRecord) {
+  const { response, data } = await panelPost(
+    panelBaseUrl(settings),
+    "checkAuth",
+    panelAuthBody(settings),
   );
-  const data = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
   return { ok: response.ok, status: response.status, data };
 }
 
-export async function fetchStorefrontConfig(
-  settings: ShopSettingsRecord,
-  shop: string,
-) {
-  const response = await fetch(
-    `${panelBaseUrl(settings)}/api/shopify/v1/storefront-config`,
-    { headers: shopifyHeaders(settings, shop) },
+export async function fetchStorefrontConfig(settings: ShopSettingsRecord) {
+  const { response, data } = await panelPost(
+    panelBaseUrl(settings),
+    "shopifyIntegration",
+    {
+      ...panelAuthBody(settings),
+      domain: settings.larapushDomainName,
+    },
   );
-
-  const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     const error = new Error(
@@ -87,8 +130,6 @@ export async function fetchStorefrontConfig(
     throw error;
   }
 
-  // Shopify app proxy service workers live under /apps/larapush/*.
-  // Force LaraPush to register with an allowed scope.
   if (data?.options) {
     data.options.domain = "/apps/larapush/";
     data.options.serviceWorker = "/apps/larapush/firebase-messaging-sw.js";
@@ -98,26 +139,10 @@ export async function fetchStorefrontConfig(
   return data;
 }
 
-export async function fetchServiceWorker(
-  settings: ShopSettingsRecord,
-  shop: string,
-) {
-  const response = await fetch(
-    `${panelBaseUrl(settings)}/api/shopify/v1/service-worker`,
-    { headers: shopifyHeaders(settings, shop) },
-  );
-
-  if (!response.ok) {
-    throw new Error(`Service worker failed (${response.status})`);
-  }
-
-  return response.text();
-}
-
 export function buildServiceWorkerFromConfig(config: any) {
   const options = config?.options ?? {};
   const firebaseConfig = options?.firebaseConfig ?? {};
-  const domain = options?.domain ?? "";
+  const domain = options?.domain ?? "/apps/larapush/";
   const apiUrl = options?.api_url ?? "/apps/larapush/token";
   const vapidPublicKey = options?.vapid_public_key ?? "";
   const oneTimeCollect = options?.one_time_collect ?? 1;
@@ -142,12 +167,14 @@ importScripts("https://cdn.larapush.com/sw/larapush-sw-v5.min.js");
 
 export async function forwardTokenToPanel(
   settings: ShopSettingsRecord,
-  shop: string,
   body: Record<string, unknown>,
 ) {
+  const tokenDomain =
+    settings.larapushDomainName || settings.storefrontDomain || "";
+
   const payload = {
     ...body,
-    domain: settings.storefrontDomain,
+    domain: tokenDomain,
   };
 
   const response = await fetch(`${panelBaseUrl(settings)}/api/token`, {

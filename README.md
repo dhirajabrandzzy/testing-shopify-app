@@ -35,7 +35,7 @@ flowchart LR
     ProxyRoute["/larapush/* handler"]
   end
   subgraph panel [LaraPush Panel - your server]
-    API["/api/shopify/v1/*"]
+    API["/api/shopifyIntegration"]
     Token["/api/token"]
     Send[Campaigns / send]
   end
@@ -53,12 +53,7 @@ flowchart LR
 2. **Shopify Partner** account and a custom app (or use CLI to create/link).
 3. A **public HTTPS URL** for this app (required for OAuth, webhooks, and app proxy during dev use a tunnel).
 
-Panel must include the Shopify integration (migration + API). From the panel repo:
-
-```bash
-cd Larapush-Panel
-php artisan migrate
-```
+Panel must include the Shopify API endpoint (`POST /api/shopifyIntegration`, same email/password auth as WordPress). Deploy the latest `Larapush-Panel` code; no extra Shopify database tables are required.
 
 ## Quick start (development)
 
@@ -66,8 +61,7 @@ php artisan migrate
 
 1. Log in to LaraPush Panel.
 2. **Domains** → create or open a domain whose **name** matches the store’s primary domain (e.g. `mystore.com`, not `*.myshopify.com`).
-3. Open **Integration → Shopify** (or `/integration/shopify/{domain_id}`).
-4. Click **Generate connection token** and copy it (30 minutes, single use).
+3. Open **Integration → Shopify** and note the **domain name** (e.g. `mystore.com`).
 
 ### 2. Shopify app
 
@@ -85,8 +79,8 @@ Install on a development store when prompted.
 ### 3. Connect
 
 1. Shopify Admin → **Apps** → LaraPush → **Settings**.
-2. **Panel URL** — e.g. `https://panel.yourdomain.com` (no trailing slash).
-3. Paste the **connection token** → **Connect to LaraPush**.
+2. Enter **Panel URL**, **email**, **password** (same as WordPress plugin), and **domain name** from step 1.
+3. Click **Connect to LaraPush**.
 
 ### 4. Theme embed
 
@@ -153,10 +147,8 @@ Default is SQLite (`prisma/schema.prisma`). For production, switch the Prisma da
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
-| `POST /api/shopify/v1/connect/exchange` | Connection token in body | Issue per-shop API key |
-| `GET /api/shopify/v1/connect/status` | `Authorization: Bearer {key}`, `X-Shop: {shop}.myshopify.com` | Connection health |
-| `GET /api/shopify/v1/storefront-config` | Same | `options` + `popup_data` for storefront |
-| `GET /api/shopify/v1/service-worker` | Same | SW JavaScript |
+| `POST /api/checkAuth` | `email`, `password` in body | Verify panel login (WordPress-style) |
+| `POST /api/shopifyIntegration` | `email`, `password`, `domain` | `options` + `popup_data` for storefront |
 | `POST /api/token` | Public | Subscriber ingest (app proxy relays here) |
 
 ## Troubleshooting
@@ -166,9 +158,9 @@ Default is SQLite (`prisma/schema.prisma`). For production, switch the Prisma da
 | No popup | Theme embed enabled? App connected? Network tab: `config.json` |
 | `config.json` 503 | Connect app in Admin; panel reachable |
 | `config.json` 404 | `shopify app deploy`; use tunnel (`npm run dev`), not localhost-only for storefront |
-| Subscriber missing | Panel domain **name** = storefront primary domain; check `POST /apps/larapush/token` |
+| Subscriber missing | LaraPush **domain name** in settings matches panel domain; check `POST /apps/larapush/token` |
 | SW 404 | Open `/apps/larapush/firebase-messaging-sw.js` on store domain |
-| Token expired | Generate a new connection token in panel |
+| Auth failed | Use same panel email/password as WordPress plugin |
 
 ## Repository layout
 

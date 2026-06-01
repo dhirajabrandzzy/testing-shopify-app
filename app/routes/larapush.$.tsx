@@ -7,7 +7,6 @@ import {
 } from "../models/shop-settings.server";
 import {
   buildServiceWorkerFromConfig,
-  fetchServiceWorker,
   fetchStorefrontConfig,
   forwardTokenToPanel,
 } from "../larapush.server";
@@ -85,14 +84,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (path === "firebase-messaging-sw.js") {
     let sw: string;
     try {
-      sw = await fetchServiceWorker(settings!, shop);
+      const config = await fetchStorefrontConfig(settings!);
+      sw = buildServiceWorkerFromConfig(config);
     } catch {
-      try {
-        const config = await fetchStorefrontConfig(settings!, shop);
-        sw = buildServiceWorkerFromConfig(config);
-      } catch {
-        sw = fallbackServiceWorker();
-      }
+      sw = fallbackServiceWorker();
     }
     return new Response(sw, {
       status: 200,
@@ -106,7 +101,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (path === "config.json") {
     try {
-      const config = await fetchStorefrontConfig(settings!, shop);
+      const config = await fetchStorefrontConfig(settings!);
       return Response.json(config, {
         headers: { "Cache-Control": "public, max-age=120" },
       });
@@ -161,7 +156,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const body = await request.json().catch(() => ({}));
-  const result = await forwardTokenToPanel(settings!, shop, body);
+  const result = await forwardTokenToPanel(settings!, body);
 
   return Response.json(result.data, { status: result.status || 200 });
 };

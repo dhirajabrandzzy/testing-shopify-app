@@ -12,7 +12,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     shop: session.shop,
     connected: connection.connected,
-    disabledByPanel: connection.disabledByPanel,
+    credentialsInvalid: connection.credentialsInvalid,
     panelUrl: connection.settings?.larapushPanelUrl,
     storefrontDomain: connection.settings?.storefrontDomain,
     larapushDomainName: connection.settings?.larapushDomainName,
@@ -23,7 +23,7 @@ export default function Index() {
   const {
     shop,
     connected,
-    disabledByPanel,
+    credentialsInvalid,
     panelUrl,
     storefrontDomain,
     larapushDomainName,
@@ -82,16 +82,15 @@ export default function Index() {
             <strong>{panelUrl}</strong>. Enable the LaraPush Subscribe theme
             app embed, then visit your storefront to test subscriptions.
           </s-banner>
-        ) : disabledByPanel ? (
-          <s-banner tone="warning" heading="Disabled from LaraPush panel">
-            This connection was disabled in your LaraPush panel. Generate a new
-            connection token in Domains → Integration → Shopify, then reconnect
-            in Settings.
+        ) : credentialsInvalid ? (
+          <s-banner tone="warning" heading="Invalid panel credentials">
+            Update your panel URL, email, and password in Settings (same login
+            as the WordPress plugin).
           </s-banner>
         ) : (
           <s-banner tone="warning" heading="Connect your panel">
-            Generate a connection token in your LaraPush panel under Domains →
-            Integration → Shopify, then paste it in Settings.
+            Open Settings and enter your LaraPush panel URL, email, password,
+            and domain name.
           </s-banner>
         )}
       </s-section>

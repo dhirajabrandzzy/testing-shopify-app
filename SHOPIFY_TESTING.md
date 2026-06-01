@@ -28,7 +28,7 @@ php artisan migrate
 
 Open panel → **Domains** → your domain → **Shopify** button (or URL `/integration/shopify/{domain_id}`).
 
-Click **Generate connection token** and copy the token (30 min validity).
+Copy the **domain name** shown (e.g. `your-store.com`). You will use the same panel **email** and **password** as the WordPress plugin.
 
 ### 2. Shopify app
 
@@ -46,8 +46,9 @@ Install the app on your dev store when prompted.
 
 1. Apps → your app → **LaraPush settings**
 2. **Panel URL** — e.g. `https://panel.test` (no trailing slash)
-3. Paste **connection token** → **Connect to LaraPush**
-4. Note the **storefront domain** shown (must match panel Domain name)
+3. **Panel email** and **password** (same as WordPress plugin)
+4. **LaraPush domain name** — must match the domain in the panel from step 1
+5. **Connect to LaraPush**
 
 ### 4. Enable theme embed
 
@@ -93,7 +94,7 @@ From LaraPush panel, create/send a notification targeting that **domain** (same 
 | No popup on storefront | App embed enabled? App connected? `config.json` in Network tab |
 | `config.json` 503 | Connect app in Admin settings |
 | `config.json` 404 | App proxy deployed? Use `npm run dev` with tunnel, not localhost-only |
-| Subscriber not in panel | `storefront_domain` in app matches panel Domain `name`; check `/apps/larapush/token` response |
+| Subscriber not in panel | **LaraPush domain name** in app settings matches panel Domain `name`; check `/apps/larapush/token` response |
 | SW 404 | Visit `/apps/larapush/firebase-messaging-sw.js` on store domain |
 | Domain not found on token | Panel Domain name must equal storefront host (with/without `www` — be consistent) |
 
@@ -101,10 +102,8 @@ From LaraPush panel, create/send a notification targeting that **domain** (same 
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
-| `POST /api/shopify/v1/connect/exchange` | connection token | Shopify app connect |
-| `GET /api/shopify/v1/connect/status` | Bearer + `X-Shop` | Health check |
-| `GET /api/shopify/v1/storefront-config` | Bearer + `X-Shop` | Popup + options JSON |
-| `GET /api/shopify/v1/service-worker` | Bearer + `X-Shop` | SW source |
+| `POST /api/checkAuth` | `email`, `password` | Verify panel login |
+| `POST /api/shopifyIntegration` | `email`, `password`, `domain` | Popup + options JSON |
 | `POST /api/token` | public | Subscriber ingest (used by proxy relay) |
 
 ## Local URLs

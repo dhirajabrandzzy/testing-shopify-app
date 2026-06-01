@@ -36,7 +36,8 @@ model Session {
 model ShopSettings {
   shop                String    @id
   larapushPanelUrl    String?
-  larapushApiKey      String?
+  larapushEmail       String?
+  larapushPassword    String?
   larapushDomainId    Int?
   larapushDomainName  String?
   storefrontDomain    String?
