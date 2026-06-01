@@ -1,9 +1,12 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
+import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate } from "../shopify.server";
+import appStyles from "../styles/app.css?url";
+
+export const links = () => [{ rel: "stylesheet", href: appStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -17,19 +20,11 @@ export default function App() {
 
   return (
     <AppProvider embedded apiKey={apiKey}>
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid #e1e3e5",
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          background: "#fff",
-        }}
-      >
-        <Link to="/app">Home</Link>
-        <Link to="/app/settings">LaraPush settings</Link>
-      </div>
+      <s-app-nav>
+        {/* rel="home" marks /app as default landing; link is hidden from nav */}
+        <s-link href="/app" {...({ rel: "home" } as any)} />
+        <s-link href="/app/settings">Settings</s-link>
+      </s-app-nav>
       <Outlet />
     </AppProvider>
   );

@@ -10,36 +10,27 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
   deleteShopSettings,
-  getShopSettings,
-  isShopConnected,
+  resolvePanelConnection,
   upsertShopSettings,
 } from "../models/shop-settings.server";
 import {
   exchangeConnectionToken,
-  fetchConnectStatus,
   fetchShopPrimaryDomain,
 } from "../larapush.server";
+import { LaraPushBrandBar } from "../components/LaraPushBrandBar";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
-  const settings = await getShopSettings(shop);
   const domains = await fetchShopPrimaryDomain(admin);
-
-  let panelStatus: Record<string, unknown> | null = null;
-  if (settings && isShopConnected(settings)) {
-    try {
-      panelStatus = await fetchConnectStatus(settings, shop);
-    } catch {
-      panelStatus = { success: false, message: "Could not reach LaraPush panel." };
-    }
-  }
+  const connection = await resolvePanelConnection(shop);
 
   return {
     shop,
-    settings,
-    connected: isShopConnected(settings),
-    panelStatus,
+    settings: connection.settings,
+    connected: connection.connected,
+    disabledByPanel: connection.disabledByPanel,
+    panelStatus: connection.panelStatus,
     primaryDomain: domains.primaryDomain,
     myshopifyDomain: domains.myshopifyDomain,
     defaultPanelUrl: process.env.LARAPUSH_PANEL_URL || "",
@@ -109,6 +100,7 @@ export default function SettingsPage() {
     shop,
     settings,
     connected,
+    disabledByPanel,
     panelStatus,
     primaryDomain,
     myshopifyDomain,
@@ -128,72 +120,128 @@ export default function SettingsPage() {
   }, [actionData, shopify]);
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: 20 }}>
-      <h1 style={{ marginBottom: 8 }}>LaraPush settings</h1>
-      <p style={{ marginBottom: 16 }}>
-        Connect this Shopify app to your LaraPush panel using panel URL + token.
-      </p>
+    <s-page heading="LaraPush settings" inlineSize="small">
+      <s-section heading="Connection status">
+        <LaraPushBrandBar subtitle="Connect your Shopify store to your self-hosted LaraPush panel." />
 
-      <div style={{ marginBottom: 20 }}>
-        <p>
-          <strong>Shop:</strong> {shop}
-        </p>
-        <p>
-          <strong>Storefront domain (for panel):</strong>{" "}
-          {settings?.storefrontDomain || primaryDomain || myshopifyDomain}
-        </p>
-        <p>
-          <strong>Status:</strong> {connected ? "Connected" : "Not connected"}
-        </p>
-        {connected && panelStatus?.success ? (
+        <div className="lp-meta">
           <p>
-            <strong>Panel domain:</strong> {String(panelStatus.domain_name)} (ID{" "}
-            {String(panelStatus.domain_id)})
+            <strong>Shop:</strong> {shop}
           </p>
-        ) : null}
-      </div>
+          <p>
+            <strong>Panel domain:</strong>{" "}
+            {settings?.larapushPanelUrl || "—"}
+          </p>
+          <p>
+            <strong>Storefront domain:</strong>{" "}
+            {settings?.storefrontDomain || primaryDomain || myshopifyDomain}
+          </p>
+          <p>
+            <strong>Status:</strong>{" "}
+            {connected ? (
+              <span className="lp-status-connected">Connected</span>
+            ) : (
+              <span className="lp-status-disconnected">Not connected</span>
+            )}
+          </p>
+          {connected && settings?.larapushDomainName ? (
+            <p>
+              <strong>LaraPush domain:</strong> {settings.larapushDomainName}
+              {panelStatus?.success && panelStatus.domain_id != null
+                ? ` (ID ${String(panelStatus.domain_id)})`
+                : ""}
+            </p>
+          ) : null}
+        </div>
 
-      <Form method="post" style={{ display: "grid", gap: 10, marginBottom: 20 }}>
-        <input type="hidden" name="intent" value="connect" />
-        <label>
-          LaraPush panel URL
-          <input
-            name="panelUrl"
-            type="url"
-            required
-            placeholder="https://panel.yourdomain.com"
-            defaultValue={settings?.larapushPanelUrl || defaultPanelUrl}
-            style={{ width: "100%", marginTop: 4, padding: 8 }}
-          />
-        </label>
-        <label>
-          Connection token
-          <input
-            name="connectionToken"
-            type="text"
-            required
-            placeholder="Paste token from panel"
-            style={{ width: "100%", marginTop: 4, padding: 8 }}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{ width: 240, padding: "10px 12px" }}
-        >
-          {isSubmitting ? "Connecting..." : "Connect to LaraPush"}
-        </button>
-      </Form>
+        {connected ? (
+          <s-banner tone="success" heading="Connected to LaraPush">
+            Your store is linked to panel at{" "}
+            <strong>{settings?.larapushPanelUrl}</strong>. Subscribers sync to
+            LaraPush domain {settings?.larapushDomainName}.
+          </s-banner>
+        ) : disabledByPanel ? (
+          <s-banner tone="warning" heading="Disabled from LaraPush panel">
+            The connection was disabled in your LaraPush panel. Generate a new
+            connection token and reconnect below.
+          </s-banner>
+        ) : (
+          <s-banner tone="info" heading="How to connect">
+            In your LaraPush panel, open Domains → Integration → Shopify for
+            this domain, generate a connection token, then paste the panel URL
+            and token below.
+          </s-banner>
+        )}
+      </s-section>
+
+      <s-section heading="Panel credentials">
+        <Form method="post" className="lp-form">
+          <input type="hidden" name="intent" value="connect" />
+
+          <div className="lp-field">
+            <label htmlFor="panelUrl">LaraPush panel URL</label>
+            <input
+              id="panelUrl"
+              name="panelUrl"
+              type="url"
+              required
+              placeholder="https://panel.yourdomain.com"
+              defaultValue={settings?.larapushPanelUrl || defaultPanelUrl}
+            />
+          </div>
+
+          <div className="lp-field">
+            <label htmlFor="connectionToken">Connection token</label>
+            <input
+              id="connectionToken"
+              name="connectionToken"
+              type="text"
+              required
+              placeholder="Paste token from LaraPush panel"
+            />
+          </div>
+
+          <s-button
+            type="submit"
+            variant="primary"
+            {...(isSubmitting ? { loading: true } : {})}
+          >
+            {isSubmitting ? "Connecting..." : "Connect to LaraPush"}
+          </s-button>
+        </Form>
+      </s-section>
 
       {connected ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="disconnect" />
-          <button type="submit" disabled={isSubmitting} style={{ padding: "8px 12px" }}>
-            Disconnect
-          </button>
-        </Form>
+        <s-section heading="Disconnect">
+          <s-paragraph>
+            Remove the link between this Shopify store and your LaraPush panel.
+            Existing subscribers in LaraPush are not deleted.
+          </s-paragraph>
+          <Form method="post">
+            <input type="hidden" name="intent" value="disconnect" />
+            <s-button
+              type="submit"
+              variant="secondary"
+              tone="critical"
+              {...(isSubmitting ? { loading: true } : {})}
+            >
+              Disconnect
+            </s-button>
+          </Form>
+        </s-section>
       ) : null}
-    </main>
+
+      <s-section slot="aside" heading="Theme embed">
+        <s-paragraph>
+          After connecting, enable the <strong>LaraPush Subscribe</strong> app
+          embed in Online Store → Themes → Customize → App embeds.
+        </s-paragraph>
+        <s-paragraph>
+          The service worker and token API are served via app proxy at{" "}
+          <code>/apps/larapush/</code>.
+        </s-paragraph>
+      </s-section>
+    </s-page>
   );
 }
 

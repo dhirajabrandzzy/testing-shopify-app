@@ -1,0 +1,89 @@
+:root {
+  --lp-primary: #0472ed;
+  --lp-primary-dark: #0361c7;
+  --lp-primary-light: #e8f2ff;
+  --lp-border: #dce8f8;
+  --lp-text: #1a2b4a;
+  --lp-text-muted: #6b7c93;
+}
+
+.lp-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.lp-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.lp-field label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--lp-text);
+}
+
+.lp-field input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  font: inherit;
+  color: var(--lp-text);
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.lp-field input:focus {
+  outline: none;
+  border-color: var(--lp-primary);
+  box-shadow: 0 0 0 3px rgba(4, 114, 237, 0.15);
+}
+
+.lp-meta {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  color: var(--lp-text-muted);
+  font-size: 0.875rem;
+}
+
+.lp-meta strong {
+  color: var(--lp-text);
+}
+
+.lp-status-connected {
+  color: #008060;
+  font-weight: 600;
+}
+
+.lp-status-disconnected {
+  color: #8c9196;
+  font-weight: 600;
+}
+
+.lp-brand-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, var(--lp-primary-light) 0%, #fff 100%);
+  border: 1px solid var(--lp-border);
+  border-radius: 10px;
+}
+
+.lp-brand-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 160px;
+  flex-shrink: 0;
+}
+
+.lp-brand-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--lp-text-muted);
+  line-height: 1.4;
+}

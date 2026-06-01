@@ -59,7 +59,11 @@ export async function fetchConnectStatus(
     `${panelBaseUrl(settings)}/api/shopify/v1/connect/status`,
     { headers: shopifyHeaders(settings, shop) },
   );
-  return response.json();
+  const data = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  return { ok: response.ok, status: response.status, data };
 }
 
 export async function fetchStorefrontConfig(
@@ -71,11 +75,18 @@ export async function fetchStorefrontConfig(
     { headers: shopifyHeaders(settings, shop) },
   );
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error(`Storefront config failed (${response.status})`);
+    const error = new Error(
+      typeof data?.message === "string"
+        ? data.message
+        : `Storefront config failed (${response.status})`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
-  const data = await response.json();
   // Shopify app proxy service workers live under /apps/larapush/*.
   // Force LaraPush to register with an allowed scope.
   if (data?.options) {

@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import {
   getShopSettings,
   isShopConnected,
+  markPanelConnectionDisabled,
 } from "../models/shop-settings.server";
 import {
   buildServiceWorkerFromConfig,
@@ -31,7 +32,7 @@ async function getProxyContext(request: Request) {
   }
 
   const settings = await getShopSettings(shop);
-  if (!settings || !isShopConnected(settings) || settings.enabled === false) {
+  if (!settings || !isShopConnected(settings)) {
     throw new Response("LaraPush is not connected for this shop.", {
       status: 503,
     });
@@ -110,6 +111,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         headers: { "Cache-Control": "public, max-age=120" },
       });
     } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as Error & { status?: number }).status === 401
+      ) {
+        await markPanelConnectionDisabled(shop);
+      }
+
       return Response.json(
         {
           success: false,
