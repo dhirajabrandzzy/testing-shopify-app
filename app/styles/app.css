@@ -40,6 +40,13 @@
   box-shadow: 0 0 0 3px rgba(4, 114, 237, 0.15);
 }
 
+.lp-field-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--lp-text-muted);
+  line-height: 1.4;
+}
+
 .lp-meta {
   display: grid;
   gap: 0.35rem;

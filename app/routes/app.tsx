@@ -21,9 +21,9 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        {/* rel="home" marks /app as default landing; link is hidden from nav */}
-        <s-link href="/app" {...({ rel: "home" } as any)} />
-        <s-link href="/app/settings">Settings</s-link>
+        <s-link href="/app" {...({ rel: "home" } as any)}>
+          Dashboard
+        </s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
