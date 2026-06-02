@@ -12,7 +12,7 @@ import {
   dashboardAction,
   dashboardHeaders,
   dashboardLoader,
-} from "./app.dashboard.server";
+} from "../dashboard.server";
 
 export const loader = dashboardLoader;
 export const action = dashboardAction;

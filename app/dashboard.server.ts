@@ -1,12 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
+import { authenticate } from "./shopify.server";
 import {
   deleteShopSettings,
   resolvePanelConnection,
   upsertShopSettings,
-} from "../models/shop-settings.server";
-import { connectToPanel, fetchShopPrimaryDomain } from "../larapush.server";
+} from "./models/shop-settings.server";
+import { connectToPanel, fetchShopPrimaryDomain } from "./larapush.server";
 
 export const dashboardLoader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);

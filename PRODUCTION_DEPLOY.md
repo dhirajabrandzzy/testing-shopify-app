@@ -21,9 +21,13 @@ cd /var/www/testing-shopify-app   # your path
 git pull                         # or upload latest files
 npm ci
 npx prisma migrate deploy
-npm run build
+npm run build                    # must succeed before pm2 restart
 pm2 restart larapush-shopify --update-env
 ```
+
+If `npm run build` fails with **Server-only module referenced by client**, ensure there is no `*.server.ts` file inside `app/routes/` (server helpers belong in `app/` e.g. `app/dashboard.server.ts`).
+
+If PM2 shows `Cannot find module build/server/index.js`, the build failed — fix build first, then restart.
 
 Verify `.env`:
 
