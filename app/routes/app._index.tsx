@@ -26,7 +26,9 @@ export default function AppDashboard() {
     credentialsInvalid,
     primaryDomain,
     myshopifyDomain,
+    storefrontHost,
     defaultPanelUrl,
+    appUrl,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -118,7 +120,7 @@ export default function AppDashboard() {
               type="email"
               required
               autoComplete="username"
-              placeholder="Same as WordPress plugin"
+              placeholder="Enter LaraPush panel email"
               defaultValue={settings?.larapushEmail || ""}
             />
           </div>
@@ -131,7 +133,7 @@ export default function AppDashboard() {
               type="password"
               required
               autoComplete="current-password"
-              placeholder="Same as WordPress plugin"
+              placeholder="Enter LaraPush panel password"
             />
           </div>
 
@@ -181,29 +183,72 @@ export default function AppDashboard() {
         </s-section>
       ) : null}
 
-      <s-section slot="aside" heading="Setup checklist">
+      <s-section heading="Storefront & theme embed">
+        <s-banner tone="warning" heading="Theme extension is separate from the server">
+          <s-paragraph>
+            <code>npm run build</code> on your server only deploys the Admin app.
+            The storefront script is released with{" "}
+            <strong>Shopify CLI</strong> (<code>shopify app deploy</code>) from a
+            machine that has the CLI — not via PM2. If you do not see{" "}
+            <strong>LaraPush Subscribe</strong> under Theme → App embeds, the
+            extension was not deployed to this Partner app yet.
+          </s-paragraph>
+        </s-banner>
+
         <s-unordered-list>
           <s-list-item>
-            Connect your panel using the form (URL, email, password, domain
-            name).
+            On your laptop (with Shopify CLI):{" "}
+            <code>shopify app config link</code> → select app with client ID{" "}
+            <code>23834f0428…</code> (same as server <code>.env</code>), then{" "}
+            <code>npm run deploy</code>.
+          </s-list-item>
+          <s-list-item>
+            Or on the server:{" "}
+            <code>npx shopify@latest auth login</code> then{" "}
+            <code>npx shopify@latest app deploy</code> (Partner login required).
           </s-list-item>
           <s-list-item>
             <strong>Online Store → Themes → Customize → App embeds</strong> —
-            enable <strong>LaraPush Subscribe</strong>.
+            turn ON <strong>LaraPush Subscribe</strong> → Save.
           </s-list-item>
           <s-list-item>
-            Visit your storefront and allow browser notifications.
-          </s-list-item>
-          <s-list-item>
-            Confirm subscribers in LaraPush panel under your domain.
+            Open the live storefront (not theme editor preview only), allow
+            notifications in the browser.
           </s-list-item>
         </s-unordered-list>
-        <s-paragraph>
-          Storefront endpoints (app proxy):{" "}
-          <code>/apps/larapush/config.json</code>,{" "}
-          <code>/apps/larapush/firebase-messaging-sw.js</code>,{" "}
-          <code>POST /apps/larapush/token</code>
-        </s-paragraph>
+
+        {connected && storefrontHost ? (
+          <div className="lp-meta" style={{ marginTop: "1rem" }}>
+            <p>
+              <strong>Test on storefront</strong> (must open on the shop domain):
+            </p>
+            <p>
+              <a
+                href={`https://${storefrontHost}/apps/larapush/config.json`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {`https://${storefrontHost}/apps/larapush/config.json`}
+              </a>
+            </p>
+            <p className="lp-field-hint">
+              Should return JSON with <code>success: true</code>. If 503 or HTML,
+              fix app proxy URL in Partner Dashboard (
+              {appUrl || "SHOPIFY_APP_URL"}/larapush).
+            </p>
+          </div>
+        ) : null}
+      </s-section>
+
+      <s-section slot="aside" heading="Quick checklist">
+        <s-unordered-list>
+          <s-list-item>Panel connected (above)</s-list-item>
+          <s-list-item>
+            <code>shopify app deploy</code> for theme extension
+          </s-list-item>
+          <s-list-item>App embed enabled on published theme</s-list-item>
+          <s-list-item>Subscribers in LaraPush panel</s-list-item>
+        </s-unordered-list>
       </s-section>
     </s-page>
   );

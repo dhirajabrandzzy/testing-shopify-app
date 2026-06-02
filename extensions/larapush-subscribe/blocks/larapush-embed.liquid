@@ -192,9 +192,10 @@
       })
       .then(function (data) {
         if (!data || !data.success) {
-          console.warn('[LaraPush] Not connected or config unavailable.', data);
+          console.warn('[LaraPush] Config unavailable. Enable app embed, connect app in Admin, and open:', configUrl, data);
           return;
         }
+        console.info('[LaraPush] Config OK — notification permission flow starting.');
         if (!('Notification' in window) || !('serviceWorker' in navigator)) {
           console.warn('[LaraPush] Browser does not support notifications/service workers.');
           return;
@@ -242,7 +243,7 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Enable after connecting the LaraPush app in Shopify Admin. Visitors see the browser's native notification permission prompt (no custom popup)."
+      "content": "Turn this embed ON and Save. Requires LaraPush connected in the app admin and shopify app deploy (theme extension). No settings here — script loads on the storefront automatically. If missing from this list, run shopify app deploy for your Partner app."
     }
   ]
 }

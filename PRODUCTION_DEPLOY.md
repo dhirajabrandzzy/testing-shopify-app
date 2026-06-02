@@ -54,11 +54,15 @@ shopify app deploy
 
 This pushes app proxy + theme extension to the Partner app.
 
+## Theme extension (storefront)
+
+See **[EXTENSION_DEPLOY.md](./EXTENSION_DEPLOY.md)**. Run `shopify app deploy` from a machine with Shopify CLI — the server PM2 process alone is not enough for the storefront prompt.
+
 ## After deploy
 
 1. Open the app in Shopify Admin — you should see **LaraPush** with panel URL, email, password, domain fields.
 2. Hard refresh Admin (Cmd+Shift+R) if you still see the old template.
-3. Connect panel → enable **LaraPush Subscribe** theme embed → test storefront.
+3. `shopify app deploy` → enable **LaraPush Subscribe** theme embed → test storefront.
 
 ## Still seeing the template?
 
