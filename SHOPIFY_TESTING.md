@@ -68,19 +68,17 @@ Re-install the app if you changed app proxy subpath (Shopify caches proxy path p
 ## How the subscribe prompt appears
 
 1. Visitor opens any page with the embed enabled (typically all pages).
-2. LaraPush CDN script (`larapush-popup-5.0.0.min.js`) loads.
-3. The embed fetches `/apps/larapush/config.json` (app proxy → your app → panel API).
-4. **`new LaraPush(options, popup_data)`** runs — same as WordPress:
-   - Custom **heading / subheading / logo / colors** from panel domain popup settings (`_web_popup_data`).
-   - **Allow** / **Deny** buttons on the LaraPush overlay.
-5. On **Allow**, the browser shows the **native** “Allow notifications?” permission (Chrome/Firefox/Safari).
-6. After permission, the service worker at `/apps/larapush/firebase-messaging-sw.js` registers and the subscription is POSTed to `/apps/larapush/token` → forwarded to panel `POST /api/token`.
+2. The embed fetches `/apps/larapush/config.json` (app proxy → your app → panel API).
+3. The browser’s **native** notification permission dialog is shown (no custom LaraPush overlay on Shopify).
+4. If the visitor allows, the service worker at `/apps/larapush/firebase-messaging-sw.js` registers and the token is POSTed to `/apps/larapush/token` → panel `POST /api/token`.
+5. If the visitor denies, the browser remembers — the prompt is not shown again on later pages.
+6. Optional `popup_data.delay` (seconds) from the panel delays when the native prompt is requested.
 7. Subscriber appears in panel under that **domain**.
 
 ## Verify subscriber
 
 1. Open storefront in Chrome (desktop): `https://{your-storefront-domain}`
-2. Accept the LaraPush popup, then allow browser notifications
+2. Allow the browser notification permission prompt
 3. Panel → domain → subscribers — new token should appear
 
 ## Send a test push

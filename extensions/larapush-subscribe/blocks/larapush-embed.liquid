@@ -1,7 +1,7 @@
 {% comment %}
   Shopify-compatible LaraPush web push.
-  We cannot register a root-scope service worker from /apps/larapush/*.
-  So we register under /apps/larapush/ and collect token directly.
+  Uses the browser's native notification permission prompt only (no custom popup).
+  Service worker is registered under /apps/larapush/ (Shopify app proxy scope).
 {% endcomment %}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js" defer></script>
@@ -10,40 +10,84 @@
   if (window.__larapushShopifyLoaded) return;
   window.__larapushShopifyLoaded = true;
 
-  // Do not run inside Shopify web-pixel sandbox iframes.
-  // SW registration/subscription is unreliable there.
   if (window.top !== window.self) return;
   if (window.location.pathname.indexOf('/web-pixels@') === 0) return;
 
   var configUrl = '/apps/larapush/config.json';
   var swScope = '/apps/larapush/';
   var swPath = '/apps/larapush/firebase-messaging-sw.js';
+  var NATIVE_ASK_KEY = 'larapush_native_permission_asked';
+  var NATIVE_PERM_KEY = 'larapush_last_notification_permission';
 
-  function showPrompt(popupData, onAllow, onDeny) {
-    if (document.getElementById('larapush-shopify-prompt')) return;
-    var wrap = document.createElement('div');
-    wrap.id = 'larapush-shopify-prompt';
-    wrap.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;z-index:2147483647;background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:420px;';
-    var heading = (popupData && popupData.heading) || 'Enable notifications';
-    var sub = (popupData && popupData.subheading) || 'Get updates in your browser.';
-    var allowText = (popupData && popupData.allowText) || 'Allow';
-    var denyText = (popupData && popupData.denyText) || 'Deny';
-    wrap.innerHTML =
-      '<div style="font-weight:600;margin-bottom:6px;">' + heading + '</div>' +
-      '<div style="font-size:13px;color:#444;margin-bottom:10px;">' + sub + '</div>' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button id="lp-allow-btn" style="padding:8px 12px;border:0;border-radius:8px;background:#111;color:#fff;cursor:pointer;">' + allowText + '</button>' +
-      '<button id="lp-deny-btn" style="padding:8px 12px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;">' + denyText + '</button>' +
-      '</div>';
-    document.body.appendChild(wrap);
-    wrap.querySelector('#lp-allow-btn').addEventListener('click', function () {
-      wrap.remove();
-      onAllow();
-    });
-    wrap.querySelector('#lp-deny-btn').addEventListener('click', function () {
-      wrap.remove();
-      if (onDeny) onDeny();
-    });
+  function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  }
+
+  function shouldRunOnDevice(popupData) {
+    if (!popupData) return true;
+    if (isMobileDevice() && popupData.mobile === 'disable') return false;
+    if (!isMobileDevice() && popupData.desktop === 'disable') return false;
+    return true;
+  }
+
+  function storageGet(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storageSet(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch (e) {}
+  }
+
+  function storageRemove(key) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch (e) {}
+  }
+
+  // Clear "already asked" when permission changes (e.g. reset in browser settings).
+  function syncPermissionTrackers() {
+    var current = Notification.permission;
+    var stored = storageGet(NATIVE_PERM_KEY);
+    if (stored !== null && stored !== current) {
+      storageRemove(NATIVE_ASK_KEY);
+    }
+    storageSet(NATIVE_PERM_KEY, current);
+  }
+
+  function watchPermissionChanges() {
+    if (!navigator.permissions || !navigator.permissions.query) return;
+    navigator.permissions
+      .query({ name: 'notifications' })
+      .then(function (status) {
+        status.onchange = function () {
+          syncPermissionTrackers();
+        };
+      })
+      .catch(function () {});
+  }
+
+  function shouldSkipNativeAsk() {
+    if (Notification.permission !== 'default') return true;
+    return storageGet(NATIVE_ASK_KEY) === '1';
+  }
+
+  function recordNativeAskOutcome() {
+    var permission = Notification.permission;
+    storageSet(NATIVE_PERM_KEY, permission);
+    if (permission === 'default') {
+      // Dialog dismissed without a choice — avoid asking on every page this session.
+      storageSet(NATIVE_ASK_KEY, '1');
+    } else {
+      storageRemove(NATIVE_ASK_KEY);
+    }
   }
 
   function postToken(apiUrl, token) {
@@ -77,7 +121,6 @@
 
     return navigator.serviceWorker.register(swPath, { scope: swScope })
       .then(function (registration) {
-        // Ensure worker becomes active before token subscription.
         if (registration.active) return registration;
         return new Promise(function (resolve, reject) {
           var start = Date.now();
@@ -106,6 +149,38 @@
       });
   }
 
+  function requestNativePermission(config, popupData) {
+    syncPermissionTrackers();
+    if (shouldSkipNativeAsk()) return;
+
+    var delayMs = 0;
+    if (popupData && popupData.delay != null && popupData.delay !== '') {
+      delayMs = parseInt(popupData.delay, 10) * 1000;
+      if (isNaN(delayMs) || delayMs < 0) delayMs = 0;
+    }
+
+    function run() {
+      syncPermissionTrackers();
+      if (shouldSkipNativeAsk()) return;
+
+      Notification.requestPermission().then(function () {
+        recordNativeAskOutcome();
+        if (Notification.permission !== 'granted') {
+          return;
+        }
+        subscribeWithFirebase(config).catch(function (err) {
+          console.warn('[LaraPush] Subscribe failed:', err);
+        });
+      });
+    }
+
+    if (delayMs > 0) {
+      setTimeout(run, delayMs);
+    } else {
+      run();
+    }
+  }
+
   function boot() {
     fetch(configUrl, {
       credentials: 'same-origin',
@@ -125,35 +200,27 @@
           return;
         }
 
+        var popupData = data.popup_data || {};
+
+        if (!shouldRunOnDevice(popupData)) {
+          return;
+        }
+
+        syncPermissionTrackers();
+        watchPermissionChanges();
+
         if (Notification.permission === 'granted') {
           subscribeWithFirebase(data).catch(function (err) {
-            console.warn('[LaraPush] Existing permission flow failed:', err);
+            console.warn('[LaraPush] Subscribe failed:', err);
           });
           return;
         }
 
         if (Notification.permission === 'denied') {
-          console.warn('[LaraPush] Notification permission denied by user.');
           return;
         }
 
-        showPrompt(
-          data.popup_data,
-          function () {
-            Notification.requestPermission().then(function (permission) {
-              if (permission !== 'granted') {
-                console.warn('[LaraPush] Permission not granted:', permission);
-                return;
-              }
-              subscribeWithFirebase(data).catch(function (err) {
-                console.warn('[LaraPush] Subscribe failed:', err);
-              });
-            });
-          },
-          function () {
-            console.warn('[LaraPush] User dismissed prompt.');
-          }
-        );
+        requestNativePermission(data, popupData);
       })
       .catch(function (err) {
         console.warn('[LaraPush] Subscribe embed failed:', err);
@@ -175,7 +242,7 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Enable this embed after connecting the LaraPush app in Shopify Admin. The subscribe prompt uses your LaraPush panel popup settings."
+      "content": "Enable after connecting the LaraPush app in Shopify Admin. Visitors see the browser's native notification permission prompt (no custom popup)."
     }
   ]
 }
