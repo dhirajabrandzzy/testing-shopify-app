@@ -14,12 +14,6 @@ export const dashboardLoader = async ({ request }: LoaderFunctionArgs) => {
   const domains = await fetchShopPrimaryDomain(admin);
   const connection = await resolvePanelConnection(shop);
 
-  const storefrontHost =
-    connection.settings?.storefrontDomain ||
-    domains.primaryDomain ||
-    domains.myshopifyDomain ||
-    shop;
-
   return {
     shop,
     settings: connection.settings,
@@ -27,9 +21,7 @@ export const dashboardLoader = async ({ request }: LoaderFunctionArgs) => {
     credentialsInvalid: connection.credentialsInvalid,
     primaryDomain: domains.primaryDomain,
     myshopifyDomain: domains.myshopifyDomain,
-    storefrontHost,
     defaultPanelUrl: process.env.LARAPUSH_PANEL_URL || "",
-    appUrl: process.env.SHOPIFY_APP_URL || "",
   };
 };
 

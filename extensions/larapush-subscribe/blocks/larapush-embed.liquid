@@ -1,10 +1,8 @@
 {% comment %}
   Shopify-compatible LaraPush web push.
-  Uses the browser's native notification permission prompt only (no custom popup).
+  Uses the LaraPush CDN popup script for custom branded prompts.
   Service worker is registered under /apps/larapush/ (Shopify app proxy scope).
 {% endcomment %}
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js" defer></script>
 <script>
 (function () {
   if (window.__larapushShopifyLoaded) return;
@@ -13,226 +11,36 @@
   if (window.top !== window.self) return;
   if (window.location.pathname.indexOf('/web-pixels@') === 0) return;
 
-  var configUrl = '/apps/larapush/config.json';
-  var swScope = '/apps/larapush/';
-  var swPath = '/apps/larapush/firebase-messaging-sw.js';
-  var NATIVE_ASK_KEY = 'larapush_native_permission_asked';
-  var NATIVE_PERM_KEY = 'larapush_last_notification_permission';
+  // Fetch config and load CDN script in parallel to minimise latency.
+  var configPromise = fetch('/apps/larapush/config.json', {
+    credentials: 'same-origin',
+    headers: { 'ngrok-skip-browser-warning': '1' }
+  }).then(function (res) { return res.json(); });
 
-  function isMobileDevice() {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-  }
+  var scriptPromise = new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.larapush.com/scripts/larapush-popup-5.0.0.min.js';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
 
-  function shouldRunOnDevice(popupData) {
-    if (!popupData) return true;
-    if (isMobileDevice() && popupData.mobile === 'disable') return false;
-    if (!isMobileDevice() && popupData.desktop === 'disable') return false;
-    return true;
-  }
-
-  function storageGet(key) {
-    try {
-      return sessionStorage.getItem(key);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function storageSet(key, value) {
-    try {
-      sessionStorage.setItem(key, value);
-    } catch (e) {}
-  }
-
-  function storageRemove(key) {
-    try {
-      sessionStorage.removeItem(key);
-    } catch (e) {}
-  }
-
-  // Clear "already asked" when permission changes (e.g. reset in browser settings).
-  function syncPermissionTrackers() {
-    var current = Notification.permission;
-    var stored = storageGet(NATIVE_PERM_KEY);
-    if (stored !== null && stored !== current) {
-      storageRemove(NATIVE_ASK_KEY);
-    }
-    storageSet(NATIVE_PERM_KEY, current);
-  }
-
-  function watchPermissionChanges() {
-    if (!navigator.permissions || !navigator.permissions.query) return;
-    navigator.permissions
-      .query({ name: 'notifications' })
-      .then(function (status) {
-        status.onchange = function () {
-          syncPermissionTrackers();
-        };
-      })
-      .catch(function () {});
-  }
-
-  function shouldSkipNativeAsk() {
-    if (Notification.permission !== 'default') return true;
-    return storageGet(NATIVE_ASK_KEY) === '1';
-  }
-
-  function recordNativeAskOutcome() {
-    var permission = Notification.permission;
-    storageSet(NATIVE_PERM_KEY, permission);
-    if (permission === 'default') {
-      // Dialog dismissed without a choice — avoid asking on every page this session.
-      storageSet(NATIVE_ASK_KEY, '1');
-    } else {
-      storageRemove(NATIVE_ASK_KEY);
-    }
-  }
-
-  function postToken(apiUrl, token) {
-    return fetch(apiUrl, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': '1'
-      },
-      body: JSON.stringify({
-        token: token,
-        url: window.location.href
-      })
-    });
-  }
-
-  function subscribeWithFirebase(config) {
-    if (!window.firebase || !window.firebase.messaging) {
-      throw new Error('Firebase SDK not loaded');
-    }
-    var options = config.options || {};
-    if (!options.firebaseConfig || !options.vapid_public_key) {
-      throw new Error('LaraPush options missing firebaseConfig or vapid key');
-    }
-
-    if (!window.firebase.apps.length) {
-      window.firebase.initializeApp(options.firebaseConfig);
-    }
-    var messaging = window.firebase.messaging();
-
-    return navigator.serviceWorker.register(swPath, { scope: swScope })
-      .then(function (registration) {
-        if (registration.active) return registration;
-        return new Promise(function (resolve, reject) {
-          var start = Date.now();
-          var timer = setInterval(function () {
-            if (registration.active) {
-              clearInterval(timer);
-              resolve(registration);
-              return;
-            }
-            if (Date.now() - start > 10000) {
-              clearInterval(timer);
-              reject(new Error('Service worker did not activate in time.'));
-            }
-          }, 250);
-        });
-      })
-      .then(function (registration) {
-        return messaging.getToken({
-          vapidKey: options.vapid_public_key,
-          serviceWorkerRegistration: registration
-        });
-      })
-      .then(function (token) {
-        if (!token) throw new Error('No FCM token returned');
-        return postToken(options.api_url || '/apps/larapush/token', token);
-      });
-  }
-
-  function requestNativePermission(config, popupData) {
-    syncPermissionTrackers();
-    if (shouldSkipNativeAsk()) return;
-
-    var delayMs = 0;
-    if (popupData && popupData.delay != null && popupData.delay !== '') {
-      delayMs = parseInt(popupData.delay, 10) * 1000;
-      if (isNaN(delayMs) || delayMs < 0) delayMs = 0;
-    }
-
-    function run() {
-      syncPermissionTrackers();
-      if (shouldSkipNativeAsk()) return;
-
-      Notification.requestPermission().then(function () {
-        recordNativeAskOutcome();
-        if (Notification.permission !== 'granted') {
-          return;
-        }
-        subscribeWithFirebase(config).catch(function (err) {
-          console.warn('[LaraPush] Subscribe failed:', err);
-        });
-      });
-    }
-
-    if (delayMs > 0) {
-      setTimeout(run, delayMs);
-    } else {
-      run();
-    }
-  }
-
-  function boot() {
-    fetch(configUrl, {
-      credentials: 'same-origin',
-      headers: { 'ngrok-skip-browser-warning': '1' }
+  Promise.all([configPromise, scriptPromise])
+    .then(function (results) {
+      var data = results[0];
+      if (!data || !data.success) {
+        console.warn('[LaraPush] Not connected or config unavailable.', data);
+        return;
+      }
+      if (typeof LaraPush !== 'function') {
+        console.warn('[LaraPush] CDN script did not expose LaraPush.');
+        return;
+      }
+      new LaraPush(data.options, data.popup_data);
     })
-      .then(function (res) {
-        if (!res.ok) throw new Error('LaraPush config HTTP ' + res.status);
-        return res.json();
-      })
-      .then(function (data) {
-        if (!data || !data.success) {
-          console.warn('[LaraPush] Config unavailable. Enable app embed, connect app in Admin, and open:', configUrl, data);
-          return;
-        }
-        console.info('[LaraPush] Config OK — notification permission flow starting.');
-        if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-          console.warn('[LaraPush] Browser does not support notifications/service workers.');
-          return;
-        }
-
-        var popupData = data.popup_data || {};
-
-        if (!shouldRunOnDevice(popupData)) {
-          return;
-        }
-
-        syncPermissionTrackers();
-        watchPermissionChanges();
-
-        if (Notification.permission === 'granted') {
-          subscribeWithFirebase(data).catch(function (err) {
-            console.warn('[LaraPush] Subscribe failed:', err);
-          });
-          return;
-        }
-
-        if (Notification.permission === 'denied') {
-          return;
-        }
-
-        requestNativePermission(data, popupData);
-      })
-      .catch(function (err) {
-        console.warn('[LaraPush] Subscribe embed failed:', err);
-      });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+    .catch(function (err) {
+      console.warn('[LaraPush] Embed failed:', err);
+    });
 })();
 </script>
 
@@ -243,7 +51,7 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "Turn this embed ON and Save. Requires LaraPush connected in the app admin and shopify app deploy (theme extension). No settings here — script loads on the storefront automatically. If missing from this list, run shopify app deploy for your Partner app."
+      "content": "Enable after connecting the LaraPush app in Shopify Admin. Shows a custom branded push notification prompt configured in your LaraPush panel."
     }
   ]
 }

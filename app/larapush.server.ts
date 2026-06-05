@@ -132,6 +132,7 @@ export async function fetchStorefrontConfig(settings: ShopSettingsRecord) {
 
   if (data?.options) {
     data.options.domain = "/apps/larapush/";
+    data.options.site_url = "/apps/larapush/";
     data.options.serviceWorker = "/apps/larapush/firebase-messaging-sw.js";
     data.options.api_url = "/apps/larapush/token";
   }

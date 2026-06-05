@@ -22,12 +22,10 @@ function proxyPath(request: Request) {
 }
 
 async function getProxyContext(request: Request) {
-  const url = new URL(request.url);
   const context = await authenticate.public.appProxy(request);
+  const url = new URL(request.url);
   const shop =
-    url.searchParams.get("shop") ||
-    context.session?.shop ||
-    undefined;
+    context.session?.shop || url.searchParams.get("shop") || undefined;
   if (!shop) {
     throw new Response("Shop not found", { status: 401 });
   }

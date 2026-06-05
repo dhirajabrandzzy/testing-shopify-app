@@ -26,9 +26,7 @@ export default function AppDashboard() {
     credentialsInvalid,
     primaryDomain,
     myshopifyDomain,
-    storefrontHost,
     defaultPanelUrl,
-    appUrl,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
